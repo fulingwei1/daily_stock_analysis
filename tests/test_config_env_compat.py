@@ -19,9 +19,9 @@ class _FakeHeaders:
 
 
 class _FakeUrlopenResponse:
-    def __init__(self, payload: str):
+    def __init__(self, payload: str, charset: str = "utf-8"):
         self._payload = payload.encode("utf-8")
-        self.headers = _FakeHeaders()
+        self.headers = _FakeHeaders(charset)
 
     def __enter__(self):
         return self
@@ -478,6 +478,52 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519", "HK00700", "AAPL"])
 
     @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_numeric_text_payload_supports_single_code(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        mock_urlopen.return_value = _FakeUrlopenResponse("600519")
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.txt",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.stock_list, ["600519"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_accepts_uppercase_scheme(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        mock_urlopen.return_value = _FakeUrlopenResponse('["600519"]')
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001",
+                "STOCK_LIST_FETCH_API": "HTTPS://example.com/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.stock_list, ["600519"])
+
+    @patch("src.config.setup_env")
     @patch("src.config.urllib.request.urlopen", side_effect=OSError("offline"))
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_failure_falls_back_to_local_stock_list(
@@ -496,6 +542,51 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         ):
             config = Config._load_from_env()
 
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_invalid_charset_falls_back_to_local_stock_list(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        mock_urlopen.return_value = _FakeUrlopenResponse('["600519"]', charset="bad-charset")
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_metadata_endpoint(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "http://169.254.169.254/latest/meta-data",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_not_called()
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
@@ -528,6 +619,45 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
 
         self.assertEqual(config.stock_list, ["300750", "TSLA"])
         self.assertEqual(config.stock_list_fetch_api, "https://example.com/stocks.json")
+
+    @patch("src.config.urllib.request.urlopen")
+    def test_refresh_stock_list_preserves_runtime_fetch_api_override(
+        self,
+        mock_urlopen,
+    ) -> None:
+        def fake_urlopen(request, timeout):
+            self.assertEqual(request.full_url, "https://runtime.example.com/stocks.json")
+            return _FakeUrlopenResponse('["300750"]')
+
+        mock_urlopen.side_effect = fake_urlopen
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "STOCK_LIST=600519",
+                        "STOCK_LIST_FETCH_API=https://file.example.com/stocks.json",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            config = Config(stock_list=["600519"])
+
+            with patch.dict(
+                os.environ,
+                {
+                    "ENV_FILE": str(env_path),
+                    "STOCK_LIST_FETCH_API": "https://runtime.example.com/stocks.json",
+                },
+                clear=True,
+            ):
+                Config._capture_bootstrap_runtime_env_overrides()
+                config.refresh_stock_list()
+
+        self.assertEqual(config.stock_list, ["300750"])
+        self.assertEqual(config.stock_list_fetch_api, "https://runtime.example.com/stocks.json")
 
     def test_parse_report_language_accepts_known_alias_without_warning(self) -> None:
         with self.assertNoLogs("src.config", level="WARNING"):

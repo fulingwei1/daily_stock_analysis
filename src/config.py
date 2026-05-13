@@ -10,6 +10,7 @@ A股自选股智能分析系统 - 配置管理模块
 3. 提供类型安全的配置访问接口
 """
 
+import ipaddress
 import json
 import logging
 import os
@@ -224,6 +225,8 @@ def _normalize_stock_list_values(values: Any) -> List[str]:
 
     if isinstance(values, str):
         raw_items = re.split(r"[\s,;，；]+", values)
+    elif isinstance(values, int) and not isinstance(values, bool):
+        raw_items = [values]
     elif isinstance(values, (list, tuple, set)):
         raw_items = values
     else:
@@ -254,6 +257,28 @@ def _parse_stock_list_payload(payload: str) -> List[str]:
         return _normalize_stock_list_values(text)
 
 
+def _is_safe_stock_list_fetch_url(parsed) -> bool:
+    """Block known metadata endpoints before fetching remote watchlists."""
+    host = (parsed.hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return True
+
+    blocked_hosts = frozenset(
+        {
+            "169.254.169.254",
+            "metadata.google.internal",
+            "100.100.100.200",
+        }
+    )
+    if host in blocked_hosts:
+        return False
+
+    try:
+        return not ipaddress.ip_address(host).is_link_local
+    except ValueError:
+        return True
+
+
 def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5.0) -> List[str]:
     """Fetch a remote watchlist from an HTTP(S) endpoint with safe fallback semantics."""
     value = (url or "").strip()
@@ -261,8 +286,12 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
         return []
 
     parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"} or not parsed.netloc:
         logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
+        return []
+    if not _is_safe_stock_list_fetch_url(parsed):
+        logger.warning("STOCK_LIST_FETCH_API 指向受限的元数据地址，已忽略")
         return []
 
     try:
@@ -278,7 +307,7 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
             logger.warning("STOCK_LIST_FETCH_API 响应超过 1MB，已忽略")
             return []
         return _parse_stock_list_payload(payload.decode(charset, errors="replace"))
-    except (OSError, urllib.error.URLError, UnicodeDecodeError) as exc:
+    except (OSError, urllib.error.URLError, UnicodeDecodeError, LookupError) as exc:
         logger.warning("STOCK_LIST_FETCH_API 拉取失败，回退本地 STOCK_LIST: %s", exc)
         return []
 
@@ -2052,6 +2081,31 @@ class Config:
         return default
 
     @classmethod
+    def _resolve_env_value_from_env_values(
+        cls,
+        key: str,
+        env_values: Optional[Dict[str, Any]],
+        *,
+        default: Optional[str] = None,
+        prefer_env_file: bool = False,
+    ) -> Optional[str]:
+        """Resolve one env value using an already parsed `.env` mapping."""
+        env_value = os.getenv(key)
+        raw_file_value = env_values.get(key) if env_values is not None else None
+        file_value = None if raw_file_value is None else str(raw_file_value)
+
+        should_prefer_file = prefer_env_file or key in cls._WEBUI_RUNTIME_ENV_FILE_PRIORITY_KEYS
+        if should_prefer_file and file_value is not None:
+            if env_value is not None and cls._has_bootstrap_runtime_env_override(key):
+                return env_value
+            return file_value
+        if env_value is not None:
+            return env_value
+        if file_value is not None:
+            return file_value
+        return default
+
+    @classmethod
     def _capture_bootstrap_runtime_env_overrides(cls) -> None:
         """Remember process-provided runtime env overrides before dotenv mutates os.environ.
 
@@ -2286,22 +2340,29 @@ class Config:
         # 也能获取到最新的股票列表配置
         env_file = os.getenv("ENV_FILE")
         env_path = Path(env_file) if env_file else (Path(__file__).parent.parent / '.env')
-        stock_list_str = ''
+        env_values: Optional[Dict[str, Any]] = None
         if env_path.exists():
             # 直接从 .env 文件读取最新的配置
             env_values = dotenv_values(env_path)
-            stock_list_str = (env_values.get('STOCK_LIST') or '').strip()
 
-        # 如果 .env 文件不存在或未配置，才尝试从系统环境变量读取
-        if not stock_list_str:
-            stock_list_str = os.getenv('STOCK_LIST', '')
-
-        stock_list_fetch_api = ''
-        if env_path.exists():
-            env_values = dotenv_values(env_path)
-            stock_list_fetch_api = (env_values.get('STOCK_LIST_FETCH_API') or '').strip()
-        if not stock_list_fetch_api:
-            stock_list_fetch_api = os.getenv('STOCK_LIST_FETCH_API', '')
+        stock_list_str = (
+            self._resolve_env_value_from_env_values(
+                'STOCK_LIST',
+                env_values,
+                default='',
+                prefer_env_file=True,
+            )
+            or ''
+        ).strip()
+        stock_list_fetch_api = (
+            self._resolve_env_value_from_env_values(
+                'STOCK_LIST_FETCH_API',
+                env_values,
+                default='',
+                prefer_env_file=True,
+            )
+            or ''
+        ).strip()
 
         stock_list = _fetch_stock_list_from_api(stock_list_fetch_api) or _normalize_stock_list_values(stock_list_str)
 
