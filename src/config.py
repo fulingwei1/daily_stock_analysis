@@ -14,6 +14,8 @@ import json
 import logging
 import os
 import re
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import unquote, urlparse
@@ -210,6 +212,75 @@ def resolve_news_window_days(news_max_age_days: int, news_strategy_profile: Opti
     profile = normalize_news_strategy_profile(news_strategy_profile)
     profile_days = NEWS_STRATEGY_WINDOWS.get(profile, NEWS_STRATEGY_WINDOWS["short"])
     return max(1, min(max(1, int(news_max_age_days)), profile_days))
+
+
+def _normalize_stock_list_values(values: Any) -> List[str]:
+    """Normalize supported stock-list payload shapes into canonical codes."""
+    if values is None:
+        return []
+
+    if isinstance(values, dict):
+        values = values.get("stocks") or values.get("stock_list") or values.get("codes")
+
+    if isinstance(values, str):
+        raw_items = re.split(r"[\s,;，；]+", values)
+    elif isinstance(values, (list, tuple, set)):
+        raw_items = values
+    else:
+        return []
+
+    normalized: List[str] = []
+    seen = set()
+    for item in raw_items:
+        if isinstance(item, dict):
+            item = item.get("code") or item.get("symbol") or item.get("stock_code")
+        code = str(item or "").strip().upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        normalized.append(code)
+    return normalized
+
+
+def _parse_stock_list_payload(payload: str) -> List[str]:
+    """Parse remote stock-list response as JSON first, then text."""
+    text = (payload or "").strip()
+    if not text:
+        return []
+
+    try:
+        return _normalize_stock_list_values(json.loads(text))
+    except json.JSONDecodeError:
+        return _normalize_stock_list_values(text)
+
+
+def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5.0) -> List[str]:
+    """Fetch a remote watchlist from an HTTP(S) endpoint with safe fallback semantics."""
+    value = (url or "").strip()
+    if not value:
+        return []
+
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
+        return []
+
+    try:
+        request = urllib.request.Request(
+            value,
+            headers={"User-Agent": "daily-stock-analysis/stock-list-fetch"},
+            method="GET",
+        )
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            payload = response.read(1024 * 1024 + 1)
+        if len(payload) > 1024 * 1024:
+            logger.warning("STOCK_LIST_FETCH_API 响应超过 1MB，已忽略")
+            return []
+        return _parse_stock_list_payload(payload.decode(charset, errors="replace"))
+    except (OSError, urllib.error.URLError, UnicodeDecodeError) as exc:
+        logger.warning("STOCK_LIST_FETCH_API 拉取失败，回退本地 STOCK_LIST: %s", exc)
+        return []
 
 
 def canonicalize_llm_channel_protocol(value: Optional[str]) -> str:
@@ -522,6 +593,7 @@ class Config:
     
     # === 自选股配置 ===
     stock_list: List[str] = field(default_factory=list)
+    stock_list_fetch_api: Optional[str] = None
 
     # === 飞书云文档配置 ===
     feishu_app_id: Optional[str] = None
@@ -888,6 +960,7 @@ class Config:
     _WEBUI_RUNTIME_ENV_FILE_PRIORITY_KEYS = frozenset(
         {
             "STOCK_LIST",
+            "STOCK_LIST_FETCH_API",
             "RUN_IMMEDIATELY",
             "SCHEDULE_ENABLED",
             "SCHEDULE_TIME",
@@ -1006,11 +1079,13 @@ class Config:
             default='',
             prefer_env_file=True,
         )
-        stock_list = [
-            (c or "").strip().upper()
-            for c in stock_list_str.split(',')
-            if (c or "").strip()
-        ]
+        stock_list_fetch_api = cls._resolve_env_value(
+            'STOCK_LIST_FETCH_API',
+            default='',
+            prefer_env_file=True,
+        )
+        fetched_stock_list = _fetch_stock_list_from_api(stock_list_fetch_api)
+        stock_list = fetched_stock_list or _normalize_stock_list_values(stock_list_str)
         
         # 如果没有配置，使用默认的示例股票
         if not stock_list:
@@ -1284,6 +1359,7 @@ class Config:
 
         return cls(
             stock_list=stock_list,
+            stock_list_fetch_api=stock_list_fetch_api or None,
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
@@ -2220,16 +2296,20 @@ class Config:
         if not stock_list_str:
             stock_list_str = os.getenv('STOCK_LIST', '')
 
-        stock_list = [
-            (c or "").strip().upper()
-            for c in stock_list_str.split(',')
-            if (c or "").strip()
-        ]
+        stock_list_fetch_api = ''
+        if env_path.exists():
+            env_values = dotenv_values(env_path)
+            stock_list_fetch_api = (env_values.get('STOCK_LIST_FETCH_API') or '').strip()
+        if not stock_list_fetch_api:
+            stock_list_fetch_api = os.getenv('STOCK_LIST_FETCH_API', '')
+
+        stock_list = _fetch_stock_list_from_api(stock_list_fetch_api) or _normalize_stock_list_values(stock_list_str)
 
         if not stock_list:
             stock_list = ['000001']
 
         self.stock_list = stock_list
+        self.stock_list_fetch_api = stock_list_fetch_api or None
     
     def validate_structured(self) -> List[ConfigIssue]:
         """Return structured validation issues with severity levels.

@@ -83,8 +83,11 @@ This document compiles common issues encountered by users and their solutions.
    - Various Webhook URLs
 3. **Variables** (click `Variables` tab): Store non-sensitive configuration
    - `STOCK_LIST`
+   - `STOCK_LIST_FETCH_API`
    - `GEMINI_MODEL`
    - `REPORT_TYPE`
+
+If you do not want to edit `STOCK_LIST` frequently, set `STOCK_LIST_FETCH_API` to an HTTP(S) endpoint that returns a plain-text or JSON watchlist. When remote fetching fails or returns no valid codes, Actions continues with `STOCK_LIST`.
 
 ---
 

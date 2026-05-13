@@ -98,6 +98,32 @@ _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         ],
         "warning_codes": [],
     },
+    "STOCK_LIST_FETCH_API": {
+        "title": "Remote Stock List API",
+        "description": "Optional HTTP(S) endpoint for fetching watchlist codes. If fetching fails or returns no valid codes, STOCK_LIST is used as fallback.",
+        "category": "base",
+        "data_type": "string",
+        "ui_control": "text",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "",
+        "options": [],
+        "validation": {"pattern": r"^https?://.+"},
+        "display_order": 11,
+        "help_key": "settings.base.STOCK_LIST_FETCH_API",
+        "examples": [
+            "STOCK_LIST_FETCH_API=https://example.com/watchlist.txt",
+            "STOCK_LIST_FETCH_API=https://example.com/watchlist.json",
+        ],
+        "docs": [
+            {
+                "label": "完整指南：自选股远程拉取",
+                "href": "https://github.com/ZhuLinsen/daily_stock_analysis/blob/main/docs/full-guide.md#环境变量完整列表",
+            },
+        ],
+        "warning_codes": [],
+    },
     # ------------------------------------------------------------------
     # AI Model – LiteLLM unified config
     # ------------------------------------------------------------------

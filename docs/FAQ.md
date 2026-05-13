@@ -85,8 +85,11 @@
    - 各类 Webhook URL
 3. **Variables**（点击 `Variables` 标签）：存放非敏感配置
    - `STOCK_LIST`
+   - `STOCK_LIST_FETCH_API`
    - `GEMINI_MODEL`
    - `REPORT_TYPE`
+
+如果不想频繁修改 `STOCK_LIST`，可以把 `STOCK_LIST_FETCH_API` 设置为一个 HTTP(S) 地址，由外部服务返回纯文本或 JSON 股票列表。远程拉取失败或返回空列表时，Actions 会继续使用 `STOCK_LIST`。
 
 ---
 

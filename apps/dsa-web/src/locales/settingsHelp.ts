@@ -30,6 +30,23 @@ const settingsHelpZhCN: SettingsHelpMap = {
       '修改后保存配置即可供后续任务读取。',
     ],
   },
+  'settings.base.STOCK_LIST_FETCH_API': {
+    title: '远程自选股 API',
+    summary: '从 HTTP(S) 地址动态拉取自选股列表，适合用外部脚本或看板维护股票池。',
+    usage: '填写可公开访问或运行环境可访问的 HTTP(S) URL。接口可返回纯文本、JSON 数组或包含 stocks / stock_list / codes 字段的 JSON 对象。',
+    valueNotes: [
+      '配置后运行时会优先使用远程列表。',
+      '拉取失败、URL 无效或返回空列表时，会自动回退到本地 STOCK_LIST。',
+      '定时模式每次触发前会重新读取并尝试拉取远程列表。',
+    ],
+    impact: [
+      '影响手动分析、定时任务和通知报告使用的股票范围。',
+    ],
+    notes: [
+      '仅支持 http 和 https 地址。',
+      '不要把需要登录态或临时本机端口的地址用于 GitHub Actions。',
+    ],
+  },
   'settings.ai_model.LITELLM_MODEL': {
     title: '主模型',
     summary: '指定普通分析流程默认使用的 LLM 模型。',
@@ -130,6 +147,21 @@ const settingsHelpEnUS: SettingsHelpMap = {
     ],
     impact: ['Affects analysis scope, notification content, and saved history reports.'],
     notes: ['Use English commas between symbols.', 'Save the setting before later tasks can read it.'],
+  },
+  'settings.base.STOCK_LIST_FETCH_API': {
+    title: 'Remote Watchlist API',
+    summary: 'Fetches watchlist codes from an HTTP(S) endpoint so an external script or dashboard can maintain the list.',
+    usage: 'Enter an HTTP(S) URL reachable by the runtime. The endpoint may return plain text, a JSON array, or a JSON object with stocks, stock_list, or codes.',
+    valueNotes: [
+      'When configured, the runtime prefers the remote watchlist.',
+      'If fetching fails, the URL is invalid, or the response has no valid codes, STOCK_LIST is used as fallback.',
+      'Scheduled mode rereads and refetches the watchlist before each run.',
+    ],
+    impact: ['Affects the stock scope for manual analysis, scheduled jobs, and notification reports.'],
+    notes: [
+      'Only http and https URLs are accepted.',
+      'Do not use login-only URLs or temporary localhost endpoints for GitHub Actions.',
+    ],
   },
   'settings.ai_model.LITELLM_MODEL': {
     title: 'Primary Model',

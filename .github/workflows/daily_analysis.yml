@@ -343,6 +343,7 @@ jobs:
           # 自选股配置
           # ==========================================
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
+          STOCK_LIST_FETCH_API: ${{ vars.STOCK_LIST_FETCH_API || secrets.STOCK_LIST_FETCH_API }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           MARKET_REVIEW_COLOR_SCHEME: ${{ vars.MARKET_REVIEW_COLOR_SCHEME || secrets.MARKET_REVIEW_COLOR_SCHEME || 'green_up' }}
           
@@ -389,6 +390,7 @@ jobs:
           echo "⏰ 时间: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
           echo "🎯 运行模式: $MODE"
           echo "📊 自选股: $STOCK_LIST"
+          echo "📊 远程自选股 API: $([ -n "$STOCK_LIST_FETCH_API" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "📝 报告类型: $REPORT_TYPE"
           echo ""
           echo "=========================================="

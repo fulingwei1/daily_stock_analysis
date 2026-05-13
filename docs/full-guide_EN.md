@@ -139,7 +139,8 @@ Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` 
 
 | Secret Name | Description | Required |
 |------------|------|:----:|
-| `STOCK_LIST` | Watchlist codes, e.g., `600519,300750,002594` | ✅ |
+| `STOCK_LIST` | Watchlist codes, e.g., `600519,300750,002594`; used as fallback when `STOCK_LIST_FETCH_API` is unavailable or empty | ✅ |
+| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or `{"stocks":[...]}` / `{"stock_list":[...]}` / `{"codes":[...]}` | Optional |
 | `ANSPIRE_API_KEYS` | [Anspire AI Search](https://aisearch.anspire.cn/) optimized for Chinese content; the same key can also be used for Anspire LLM fallback scenarios (example model: `Doubao-Seed-2.0-lite`) | Recommended |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/baidu-search-api?utm_source=github_daily_stock_analysis) search-engine results for realtime financial news | Recommended |
 | `TAVILY_API_KEYS` | [Tavily](https://tavily.com/) Search API (for news search) | Optional |
@@ -157,7 +158,7 @@ To get started quickly, you need at minimum:
 
 1. **AI Model**: `ANSPIRE_API_KEYS` (one key for LLMs and search), `AIHUBMIX_KEY` (one key for multiple model families), `GEMINI_API_KEY`, or `OPENAI_API_KEY`
 2. **Notification Channel**: At least one, e.g., `WECHAT_WEBHOOK_URL` or `EMAIL_SENDER` + `EMAIL_PASSWORD`
-3. **Stock List**: `STOCK_LIST` (required)
+3. **Stock List**: `STOCK_LIST` (required); optionally add `STOCK_LIST_FETCH_API` when an external source maintains the watchlist
 4. **Search API**: `ANSPIRE_API_KEYS` or `SERPAPI_API_KEYS` (recommended for news and sentiment search)
 
 > Configure these 4 items and you're ready to go!
@@ -333,7 +334,8 @@ For the notification baseline, diagnostics, and deployment notes, see [Notificat
 
 | Variable | Description | Default |
 |--------|------|--------|
-| `STOCK_LIST` | Watchlist codes (comma-separated) | - |
+| `STOCK_LIST` | Watchlist codes (comma-separated); fallback when the remote watchlist is unavailable | - |
+| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or JSON objects with `stocks` / `stock_list` / `codes` | - |
 | `MAX_WORKERS` | Concurrent threads | `3` |
 | `MARKET_REVIEW_ENABLED` | Enable market review | `true` |
 | `MARKET_REVIEW_REGION` | Market review region: cn (A-shares), hk (HK stocks), us (US stocks), both (all three markets) | `cn` |

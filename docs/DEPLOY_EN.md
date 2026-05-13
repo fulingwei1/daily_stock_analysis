@@ -191,7 +191,7 @@ journalctl -u stock-analyzer -f
 | Config Item | Description | How to Get |
 |--------|------|----------|
 | `ANSPIRE_API_KEYS` / `AIHUBMIX_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | Configure at least one AI model key; Anspire or AIHubMix is recommended first | Provider console |
-| `STOCK_LIST` | Watchlist | Comma-separated stock codes |
+| `STOCK_LIST` | Watchlist; fallback when remote fetching fails | Comma-separated stock codes |
 | Notification channel | Configure at least one, such as WeChat Work, Feishu, Telegram, or email | Notification provider |
 
 ### Optional Configuration
@@ -372,7 +372,8 @@ Add these Secrets:
 | `EMAIL_PASSWORD` | Email authorization code | Optional* |
 | `SERVERCHAN3_SENDKEY` | ServerChan v3 Sendkey | Optional* |
 | `CUSTOM_WEBHOOK_URLS` | Custom Webhook (comma-separated for multiple) | Optional* |
-| `STOCK_LIST` | Watchlist, e.g., `600519,300750` | ✅ |
+| `STOCK_LIST` | Watchlist, e.g., `600519,300750`; fallback when remote fetching fails | ✅ |
+| `STOCK_LIST_FETCH_API` | HTTP(S) remote watchlist endpoint, plain text or JSON; useful for dynamic watchlists in Actions Variables | Optional |
 | `SERPAPI_API_KEYS` | SerpAPI Key | Recommended |
 | `TAVILY_API_KEYS` | Tavily Search API Key | Optional |
 | `BOCHA_API_KEYS` | Bocha Search API Key | Optional |
