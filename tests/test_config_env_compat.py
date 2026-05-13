@@ -637,6 +637,28 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
     @patch("src.config.setup_env")
     @patch("src.config.urllib.request.urlopen")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_ipv6_metadata_endpoint(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "http://[fd00:ec2::254]/latest/meta-data",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_not_called()
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_blocks_hostname_resolving_to_metadata_ip(
         self,
         _mock_parse_yaml,
@@ -669,6 +691,38 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
     @patch("src.config.setup_env")
     @patch("src.config.urllib.request.urlopen")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_hostname_resolving_to_ipv6_private_ip(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        self.mock_getaddrinfo.return_value = [
+            (
+                socket.AF_INET6,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("fd00:ec2::254", 443),
+            )
+        ]
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://watchlist.example/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_not_called()
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_blocks_metadata_redirect_before_reading_response(
         self,
         _mock_parse_yaml,
@@ -678,6 +732,35 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         response = _FakeUrlopenResponse(
             '["600519"]',
             final_url="http://169.254.169.254/latest/meta-data",
+        )
+        mock_urlopen.return_value = response
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_called_once()
+        self.assertFalse(response.read_called)
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.urlopen")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_ipv6_metadata_redirect_before_reading_response(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        response = _FakeUrlopenResponse(
+            '["600519"]',
+            final_url="http://[fd00:ec2::254]/latest/meta-data",
         )
         mock_urlopen.return_value = response
 
