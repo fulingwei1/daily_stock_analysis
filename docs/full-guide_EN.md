@@ -140,7 +140,7 @@ Go to your forked repo → `Settings` → `Secrets and variables` → `Actions` 
 | Secret Name | Description | Required |
 |------------|------|:----:|
 | `STOCK_LIST` | Watchlist codes, e.g., `600519,300750,002594`; used as fallback when `STOCK_LIST_FETCH_API` is unavailable or empty | ✅ |
-| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or `{"stocks":[...]}` / `{"stock_list":[...]}` / `{"codes":[...]}` | Optional |
+| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or `{"stocks":[...]}` / `{"stock_list":[...]}` / `{"codes":[...]}`; loopback, link-local, and cloud metadata addresses are blocked | Optional |
 | `ANSPIRE_API_KEYS` | [Anspire AI Search](https://aisearch.anspire.cn/) optimized for Chinese content; the same key can also be used for Anspire LLM fallback scenarios (example model: `Doubao-Seed-2.0-lite`) | Recommended |
 | `SERPAPI_API_KEYS` | [SerpAPI](https://serpapi.com/baidu-search-api?utm_source=github_daily_stock_analysis) search-engine results for realtime financial news | Recommended |
 | `TAVILY_API_KEYS` | [Tavily](https://tavily.com/) Search API (for news search) | Optional |
@@ -335,7 +335,7 @@ For the notification baseline, diagnostics, and deployment notes, see [Notificat
 | Variable | Description | Default |
 |--------|------|--------|
 | `STOCK_LIST` | Watchlist codes (comma-separated); fallback when the remote watchlist is unavailable | - |
-| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or JSON objects with `stocks` / `stock_list` / `codes` | - |
+| `STOCK_LIST_FETCH_API` | Optional HTTP(S) endpoint for a dynamic watchlist; supports plain text, JSON arrays, or JSON objects with `stocks` / `stock_list` / `codes`; self-hosted deployments may use private URLs reachable by the runtime, while loopback, link-local, and cloud metadata addresses are blocked | - |
 | `MAX_WORKERS` | Concurrent threads | `3` |
 | `MARKET_REVIEW_ENABLED` | Enable market review | `true` |
 | `MARKET_REVIEW_REGION` | Market review region: cn (A-shares), hk (HK stocks), us (US stocks), both (all three markets) | `cn` |

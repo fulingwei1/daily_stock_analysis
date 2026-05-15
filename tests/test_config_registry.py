@@ -5,6 +5,7 @@ Ensures every notification channel that has a sender implementation also
 has its config keys registered in _FIELD_DEFINITIONS so the Web settings
 page and /api/v1/system/config/schema can expose them.
 """
+import re
 import unittest
 
 from src.core.config_registry import (
@@ -178,6 +179,16 @@ class TestSettingsHelpMetadata(unittest.TestCase):
 
         self.assertEqual(fields["STOCK_LIST"]["help_key"], "settings.base.STOCK_LIST")
         self.assertIn("docs/full-guide.md", fields["STOCK_LIST"]["docs"][0]["href"])
+
+
+class TestStockListFetchApiFieldRegistered(unittest.TestCase):
+    """Remote watchlist config should match runtime URL semantics."""
+
+    def test_fetch_api_pattern_accepts_uppercase_scheme(self):
+        field = get_field_definition("STOCK_LIST_FETCH_API")
+        pattern = field["validation"]["pattern"]
+
+        self.assertIsNotNone(re.match(pattern, "HTTPS://example.com/stocks.json"))
 
 
 class TestSensitiveFieldsUsePasswordControl(unittest.TestCase):

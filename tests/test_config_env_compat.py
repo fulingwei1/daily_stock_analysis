@@ -5,6 +5,7 @@ import os
 import socket
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -454,7 +455,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519", "000001"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_json_array_overrides_local_stock_list(
         self,
@@ -478,7 +479,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list_fetch_api, "https://example.com/stocks.json")
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_text_payload_supports_commas_and_newlines(
         self,
@@ -501,7 +502,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519", "HK00700", "AAPL"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_numeric_text_payload_supports_single_code(
         self,
@@ -524,7 +525,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_accepts_uppercase_scheme(
         self,
@@ -547,7 +548,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen", side_effect=OSError("offline"))
+    @patch("src.config._open_stock_list_fetch_request", side_effect=OSError("offline"))
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_failure_falls_back_to_local_stock_list(
         self,
@@ -568,7 +569,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_malformed_url_falls_back_to_local_stock_list(
         self,
@@ -590,7 +591,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_invalid_charset_falls_back_to_local_stock_list(
         self,
@@ -613,7 +614,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_blocks_metadata_endpoint(
         self,
@@ -635,7 +636,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_blocks_ipv6_metadata_endpoint(
         self,
@@ -657,7 +658,7 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_blocks_hostname_resolving_to_metadata_ip(
         self,
@@ -689,9 +690,9 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
-    def test_stock_list_fetch_api_blocks_hostname_resolving_to_ipv6_private_ip(
+    def test_stock_list_fetch_api_blocks_hostname_resolving_to_ipv6_metadata_ip(
         self,
         _mock_parse_yaml,
         mock_urlopen,
@@ -721,19 +722,85 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
-    def test_stock_list_fetch_api_blocks_metadata_redirect_before_reading_response(
+    def test_stock_list_fetch_api_allows_private_runtime_reachable_ip(
         self,
         _mock_parse_yaml,
         mock_urlopen,
         _mock_setup_env,
     ) -> None:
-        response = _FakeUrlopenResponse(
-            '["600519"]',
-            final_url="http://169.254.169.254/latest/meta-data",
-        )
-        mock_urlopen.return_value = response
+        mock_urlopen.return_value = _FakeUrlopenResponse('["600519"]')
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "http://10.0.0.5/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_called_once()
+        self.assertEqual(config.stock_list, ["600519"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config._open_stock_list_fetch_request")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_allows_hostname_resolving_to_private_ip(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        self.mock_getaddrinfo.return_value = [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("10.0.0.5", 80),
+            )
+        ]
+        mock_urlopen.return_value = _FakeUrlopenResponse('["600519"]')
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "http://watchlist.internal/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        mock_urlopen.assert_called_once()
+        self.assertEqual(config.stock_list, ["600519"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.build_opener")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_metadata_redirect_before_requesting_target(
+        self,
+        _mock_parse_yaml,
+        mock_build_opener,
+        _mock_setup_env,
+    ) -> None:
+        requested_urls = []
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                requested_urls.append(request.full_url)
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    302,
+                    "Found",
+                    {"Location": "http://169.254.169.254/latest/meta-data"},
+                    None,
+                )
+
+        mock_build_opener.return_value = FakeOpener()
 
         with patch.dict(
             os.environ,
@@ -745,24 +812,32 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         ):
             config = Config._load_from_env()
 
-        mock_urlopen.assert_called_once()
-        self.assertFalse(response.read_called)
+        self.assertEqual(requested_urls, ["https://example.com/stocks.json"])
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config.urllib.request.build_opener")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
-    def test_stock_list_fetch_api_blocks_ipv6_metadata_redirect_before_reading_response(
+    def test_stock_list_fetch_api_blocks_ipv6_metadata_redirect_before_requesting_target(
         self,
         _mock_parse_yaml,
-        mock_urlopen,
+        mock_build_opener,
         _mock_setup_env,
     ) -> None:
-        response = _FakeUrlopenResponse(
-            '["600519"]',
-            final_url="http://[fd00:ec2::254]/latest/meta-data",
-        )
-        mock_urlopen.return_value = response
+        requested_urls = []
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                requested_urls.append(request.full_url)
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    302,
+                    "Found",
+                    {"Location": "http://[fd00:ec2::254]/latest/meta-data"},
+                    None,
+                )
+
+        mock_build_opener.return_value = FakeOpener()
 
         with patch.dict(
             os.environ,
@@ -774,12 +849,56 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         ):
             config = Config._load_from_env()
 
-        mock_urlopen.assert_called_once()
-        self.assertFalse(response.read_called)
+        self.assertEqual(requested_urls, ["https://example.com/stocks.json"])
         self.assertEqual(config.stock_list, ["000001", "300750"])
 
     @patch("src.config.setup_env")
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config.urllib.request.build_opener")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_follows_safe_redirect(
+        self,
+        _mock_parse_yaml,
+        mock_build_opener,
+        _mock_setup_env,
+    ) -> None:
+        requested_urls = []
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                requested_urls.append(request.full_url)
+                if len(requested_urls) == 1:
+                    raise urllib.error.HTTPError(
+                        request.full_url,
+                        302,
+                        "Found",
+                        {"Location": "https://cdn.example.com/stocks.json"},
+                        None,
+                    )
+                return _FakeUrlopenResponse('["600519"]', final_url=request.full_url)
+
+        mock_build_opener.return_value = FakeOpener()
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(
+            requested_urls,
+            [
+                "https://example.com/stocks.json",
+                "https://cdn.example.com/stocks.json",
+            ],
+        )
+        self.assertEqual(config.stock_list, ["600519"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_refresh_stock_list_uses_stock_list_fetch_api(
         self,
@@ -809,12 +928,12 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["300750", "TSLA"])
         self.assertEqual(config.stock_list_fetch_api, "https://example.com/stocks.json")
 
-    @patch("src.config.urllib.request.urlopen")
+    @patch("src.config._open_stock_list_fetch_request")
     def test_refresh_stock_list_preserves_runtime_fetch_api_override(
         self,
         mock_urlopen,
     ) -> None:
-        def fake_urlopen(request, timeout):
+        def fake_urlopen(request, timeout_seconds):
             self.assertEqual(request.full_url, "https://runtime.example.com/stocks.json")
             return _FakeUrlopenResponse('["300750"]')
 

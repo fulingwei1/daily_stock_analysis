@@ -44,6 +44,7 @@ const settingsHelpZhCN: SettingsHelpMap = {
     ],
     notes: [
       '仅支持 http 和 https 地址。',
+      '会阻断 loopback、link-local 和云 metadata 地址；自托管环境可使用运行环境可访问的内网地址。',
       '不要把需要登录态或临时本机端口的地址用于 GitHub Actions。',
     ],
   },
@@ -160,6 +161,7 @@ const settingsHelpEnUS: SettingsHelpMap = {
     impact: ['Affects the stock scope for manual analysis, scheduled jobs, and notification reports.'],
     notes: [
       'Only http and https URLs are accepted.',
+      'Loopback, link-local, and cloud metadata addresses are blocked; self-hosted deployments may use private URLs reachable by the runtime.',
       'Do not use login-only URLs or temporary localhost endpoints for GitHub Actions.',
     ],
   },

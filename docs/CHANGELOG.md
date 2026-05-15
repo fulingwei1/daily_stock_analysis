@@ -97,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新功能] 新增 Alert API MVP，支持告警规则 CRUD、启停、一次性测试以及触发/通知结果查询接口，首版覆盖 `price_cross` / `price_change_percent` / `volume_spike`，并保持 legacy 配置兼容和响应脱敏。
 - [修复] 大盘复盘执行结果写入现有分析历史，Web 历史列表可直接查看已生成复盘，避免重复触发分析。
 - [新功能] 自选股配置新增可选 `STOCK_LIST_FETCH_API`，支持从 HTTP(S) 拉取远程股票列表，并在失败或空响应时回退 `STOCK_LIST`。
+- [修复] `STOCK_LIST_FETCH_API` 跟随重定向前校验目标地址，阻断 loopback、link-local 与云 metadata 目标，同时保留运行环境可访问的内网地址支持。
 
 ## [3.16.0] - 2026-05-10
 

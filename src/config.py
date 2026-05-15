@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 from dotenv import load_dotenv, dotenv_values
 from dataclasses import dataclass, field
 
@@ -56,6 +56,15 @@ _STOCK_LIST_FETCH_BLOCKED_IPS = frozenset(
         "fd00:ec2::254",
     )
 )
+_STOCK_LIST_FETCH_MAX_REDIRECTS = 5
+_STOCK_LIST_FETCH_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+
+
+class _StockListNoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep redirects visible so each target can be validated before fetching."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 @dataclass
@@ -284,11 +293,15 @@ def _is_blocked_stock_list_fetch_ip(ip_address: Any) -> bool:
     return any(
         candidate.is_link_local
         or candidate.is_loopback
-        or candidate.is_private
         or candidate.is_unspecified
         or candidate in _STOCK_LIST_FETCH_BLOCKED_IPS
         for candidate in candidates
     )
+
+
+def _is_http_stock_list_fetch_url(parsed) -> bool:
+    scheme = (parsed.scheme or "").lower()
+    return scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _is_safe_stock_list_fetch_url(parsed) -> bool:
@@ -329,6 +342,45 @@ def _is_safe_stock_list_fetch_url(parsed) -> bool:
     return bool(resolved_hosts)
 
 
+def _is_valid_stock_list_fetch_target(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return _is_http_stock_list_fetch_url(parsed) and _is_safe_stock_list_fetch_url(parsed)
+
+
+def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
+    """Open a stock-list request, validating every redirect before following it."""
+    opener = urllib.request.build_opener(_StockListNoRedirectHandler)
+    current_request = request
+
+    for redirect_count in range(_STOCK_LIST_FETCH_MAX_REDIRECTS + 1):
+        try:
+            return opener.open(current_request, timeout=timeout_seconds)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _STOCK_LIST_FETCH_REDIRECT_STATUS_CODES:
+                raise
+            if redirect_count >= _STOCK_LIST_FETCH_MAX_REDIRECTS:
+                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多") from exc
+
+            location = exc.headers.get("Location") if exc.headers else None
+            if not location:
+                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向缺少 Location") from exc
+
+            next_url = urljoin(current_request.full_url, location)
+            if not _is_valid_stock_list_fetch_target(next_url):
+                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向到受限地址") from exc
+
+            current_request = urllib.request.Request(
+                next_url,
+                headers=dict(current_request.header_items()),
+                method="GET",
+            )
+
+    raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多")
+
+
 def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5.0) -> List[str]:
     """Fetch a remote watchlist from an HTTP(S) endpoint with safe fallback semantics."""
     value = (url or "").strip()
@@ -340,8 +392,7 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
     except ValueError:
         logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
         return []
-    scheme = (parsed.scheme or "").lower()
-    if scheme not in {"http", "https"} or not parsed.netloc:
+    if not _is_http_stock_list_fetch_url(parsed):
         logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
         return []
     if not _is_safe_stock_list_fetch_url(parsed):
@@ -354,15 +405,14 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
             headers={"User-Agent": "daily-stock-analysis/stock-list-fetch"},
             method="GET",
         )
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        with _open_stock_list_fetch_request(request, timeout_seconds=timeout_seconds) as response:
             final_url = response.geturl() if hasattr(response, "geturl") else value
             try:
                 final_parsed = urlparse(final_url or value)
             except ValueError:
                 logger.warning("STOCK_LIST_FETCH_API 重定向到无效的 HTTP(S) URL，已忽略")
                 return []
-            final_scheme = (final_parsed.scheme or "").lower()
-            if final_scheme not in {"http", "https"} or not final_parsed.netloc:
+            if not _is_http_stock_list_fetch_url(final_parsed):
                 logger.warning("STOCK_LIST_FETCH_API 重定向到无效的 HTTP(S) URL，已忽略")
                 return []
             if not _is_safe_stock_list_fetch_url(final_parsed):

@@ -109,7 +109,7 @@ _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "is_editable": True,
         "default_value": "",
         "options": [],
-        "validation": {"pattern": r"^https?://.+"},
+        "validation": {"pattern": r"(?i)^https?://.+"},
         "display_order": 11,
         "help_key": "settings.base.STOCK_LIST_FETCH_API",
         "examples": [
