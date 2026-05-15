@@ -764,7 +764,7 @@ If no reachable Web base URL or history record is available, DSA should not gene
 - Compatibility verification:
   - Official references: <https://docs.litellm.ai/docs/providers/openai_compatible>, <https://platform.openai.com/docs/api-reference/chat/create>
   - Dependency window: `litellm>=1.80.10,!=1.82.7,!=1.82.8,<2.0.0` in `requirements.txt`
-  - Regression checks: `tests/test_notification_diagnostics.py`, `tests/test_feishu_doc.py`, and output from `python main.py --check-notify`.
+  - Regression checks: `tests/test_notification_diagnostics.py`, `tests/test_feishu_doc.py`, `./scripts/ci_gate.sh`, and output from `python main.py --check-notify` (optional full static check: `python -m pytest -m "not network" tests/test_notification_diagnostics.py tests/test_feishu_doc.py`).
 
 ### Discord
 

@@ -952,7 +952,7 @@ PUSHOVER_API_TOKEN=your_api_token
 - 兼容性核验依据：
   - 官方来源：<https://docs.litellm.ai/docs/providers/openai_compatible>、<https://platform.openai.com/docs/api-reference/chat/create>
   - 运行时依赖窗口：`requirements.txt` 中 `litellm>=1.80.10,!=1.82.7,!=1.82.8,<2.0.0`
-  - 建议回归测试：`tests/test_notification_diagnostics.py`、`tests/test_feishu_doc.py`，以及 `python main.py --check-notify` 的投递形态输出。
+  - 建议回归测试：`tests/test_notification_diagnostics.py`、`tests/test_feishu_doc.py`、`./scripts/ci_gate.sh`，以及 `python main.py --check-notify` 的投递形态输出；如需更完整静态验证，可补充 `python -m pytest -m "not network" tests/test_notification_diagnostics.py tests/test_feishu_doc.py`。
 
 ---
 
