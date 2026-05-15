@@ -2,6 +2,7 @@
 """Tests for read-only notification diagnostics."""
 
 import unittest
+from unittest import mock
 
 from src.config import Config
 from src.notification import NotificationChannel
@@ -97,6 +98,43 @@ class NotificationDiagnosticsTestCase(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.configured_channels, ("wechat", "ntfy", "gotify", "astrbot"))
+        self.assertIn("delivery_shape", {item.code for item in result.info})
+
+    def test_format_includes_delivery_shape_recommendation(self):
+        result = run_notification_diagnostics(
+            _config(wechat_webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=1")
+        )
+
+        output = format_notification_diagnostics(result)
+
+        self.assertIn("推荐投递形态", output)
+        self.assertIn("完整报告适配", output)
+
+    def test_feishu_doc_config_without_webhook_reports_warning(self):
+        result = run_notification_diagnostics(
+            _config(
+                feishu_app_id="cli_xxx",
+                feishu_app_secret="secret",
+                feishu_folder_token="folder_xxx",
+            )
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("feishu_doc_without_webhook", {item.code for item in result.warnings})
+
+    def test_markdown_image_channels_warn_when_converter_missing(self):
+        with mock.patch("src.services.notification_diagnostics.shutil.which", return_value=None):
+            result = run_notification_diagnostics(
+                _config(
+                    wechat_webhook_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=1",
+                    markdown_to_image_channels=["wechat"],
+                    md2img_engine="wkhtmltoimage",
+                )
+            )
+
+        self.assertTrue(result.ok)
+        self.assertIn("markdown_image_dependency_missing", {item.code for item in result.warnings})
+        self.assertIn("wechat_image_snapshot_scope", {item.code for item in result.info})
 
     def test_ntfy_url_without_topic_reports_error(self):
         result = run_notification_diagnostics(_config(ntfy_url="https://ntfy.sh"))

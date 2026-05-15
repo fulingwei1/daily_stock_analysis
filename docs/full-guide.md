@@ -931,6 +931,20 @@ PUSHOVER_API_TOKEN=your_api_token
 
 **故障排查**：若日志出现「Markdown 转图片失败，将回退为文本发送」，请检查 `MARKDOWN_TO_IMAGE_CHANNELS` 配置及转图工具是否已正确安装（`which wkhtmltoimage` 或 `which m2f`）。
 
+### 报告投递体验与渠道选择
+
+完整研报优先通过 Web 历史报告、飞书云文档或 HTML 邮件阅读；飞书、企业微信、Telegram、Slack、Discord、PushPlus、Server酱、ntfy、Gotify 和 Custom Webhook 这类 IM / Push 渠道推荐只承载摘要、关键结论、风险提示和完整报告入口。
+
+推荐组合：
+
+- 飞书：摘要卡片 + 飞书云文档或 Web 链接；`FEISHU_WEBHOOK_URL` 负责群消息，`FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_FOLDER_TOKEN` 负责云文档。
+- 企业微信：精简 dashboard + Web 链接；只有显式配置 `MARKDOWN_TO_IMAGE_CHANNELS=wechat` 时才发送图片，且更适合摘要快照。
+- 邮件：保留完整 HTML / Markdown 阅读体验，适合作为完整报告载体。
+- Telegram / Slack：摘要 + 链接为主，图片仍由 `MARKDOWN_TO_IMAGE_CHANNELS` 显式启用。
+- Discord / PushPlus / Server酱 / ntfy / Gotify / Custom Webhook：摘要 + 链接优先，避免大段正文刷屏。
+
+未配置可访问的 Web base URL 或拿不到历史报告记录时，系统不应生成误导性的完整报告链接；飞书云文档或图片快照创建失败时，会回退现有文本 / 分片推送路径。可通过 `python main.py --check-notify` 查看当前渠道的推荐投递形态和转图依赖诊断。
+
 ---
 
 ## 数据源配置

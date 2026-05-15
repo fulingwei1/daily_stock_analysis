@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Sequence, Tuple
 
@@ -22,6 +23,7 @@ from src.notification_routing import (
 )
 from src.notification_sender.gotify_sender import resolve_gotify_message_endpoint
 from src.notification_sender.ntfy_sender import resolve_ntfy_endpoint
+from src.schemas.report_delivery import get_channel_delivery_capability
 
 KeyTier = Literal["minimal", "advanced"]
 IssueSeverity = Literal["error", "warning", "info"]
@@ -328,6 +330,52 @@ def run_notification_diagnostics(config: Config) -> NotificationDiagnosticResult
                 "0 个通知渠道已配置；如需发送通知，请至少配置一个渠道的 minimal key。",
             )
         )
+    else:
+        for channel in configured:
+            capability = get_channel_delivery_capability(channel)
+            if capability:
+                info.append(
+                    _issue(
+                        "info",
+                        "delivery_shape",
+                        (
+                            f"{capability.display_name} 推荐投递形态: "
+                            f"{', '.join(capability.recommended_carriers)}；"
+                            f"完整报告适配: {capability.full_report_suitability}；"
+                            f"失败回退: {capability.fallback}。"
+                        ),
+                    )
+                )
+
+    image_channels = [
+        str(channel).strip().lower()
+        for channel in (getattr(config, "markdown_to_image_channels", None) or [])
+        if str(channel).strip()
+    ]
+    if image_channels:
+        engine = getattr(config, "md2img_engine", "wkhtmltoimage") or "wkhtmltoimage"
+        command = "m2f" if engine == "markdown-to-file" else "wkhtmltoimage"
+        if shutil.which(command) is None:
+            warnings.append(
+                _issue(
+                    "warning",
+                    "markdown_image_dependency_missing",
+                    (
+                        f"MARKDOWN_TO_IMAGE_CHANNELS 已启用 {', '.join(image_channels)}，"
+                        f"但未检测到转图命令 {command}；这些渠道会回退文本发送。"
+                    ),
+                    key="MARKDOWN_TO_IMAGE_CHANNELS",
+                )
+            )
+        if "wechat" in image_channels:
+            info.append(
+                _issue(
+                    "info",
+                    "wechat_image_snapshot_scope",
+                    "企业微信图片模式仅在显式配置时启用，适合摘要快照；长报告默认仍建议摘要 + 完整报告入口。",
+                    key="MARKDOWN_TO_IMAGE_CHANNELS",
+                )
+            )
 
     if _has(config, "ntfy_url"):
         ntfy_server_url, ntfy_topic = resolve_ntfy_endpoint(getattr(config, "ntfy_url", None))
@@ -418,6 +466,22 @@ def run_notification_diagnostics(config: Config) -> NotificationDiagnosticResult
                 "warning",
                 "advanced_without_minimal",
                 "已配置飞书 Webhook 高级安全项，但缺少 FEISHU_WEBHOOK_URL，飞书 Webhook 渠道不会启用。",
+                key="FEISHU_WEBHOOK_URL",
+            )
+        )
+    if (
+        _has(config, "feishu_app_id")
+        or _has(config, "feishu_app_secret")
+        or _has(config, "feishu_folder_token")
+    ) and not _has(config, "feishu_webhook_url"):
+        warnings.append(
+            _issue(
+                "warning",
+                "feishu_doc_without_webhook",
+                (
+                    "已配置飞书应用或云文档参数，但缺少 FEISHU_WEBHOOK_URL；"
+                    "云文档能力不会单独把摘要卡片发送到群。"
+                ),
                 key="FEISHU_WEBHOOK_URL",
             )
         )

@@ -1,10 +1,10 @@
 # feishu_doc.py
 # -*- coding: utf-8 -*-
 import logging
-import json
+import re
 import lark_oapi as lark
 from lark_oapi.api.docx.v1 import *
-from typing import List, Dict, Any, Optional
+from typing import List, Optional, Tuple
 from src.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -100,66 +100,168 @@ class FeishuDocManager:
 
     def _markdown_to_sdk_blocks(self, md_text: str) -> List[Block]:
         """
-        将简单的 Markdown 转换为飞书 SDK 的 Block 对象
+        将基础 Markdown 转换为飞书 SDK 的 Block 对象。
+
+        覆盖标题、段落、无序/有序列表、引用、分割线和基础表格。表格会创建
+        飞书 table block，同时追加一段纯文本保留单元格内容，避免当前浅层写入
+        API 无法填充 cell 内容时丢失信息。
         """
         blocks = []
         lines = md_text.split('\n')
+        index = 0
 
-        for line in lines:
-            line = line.strip()
+        while index < len(lines):
+            line = lines[index].strip()
             if not line:
+                index += 1
                 continue
 
-            # 默认普通文本 (Text = 2)
-            block_type = 2
-            text_content = line
+            table_rows, next_index = self._consume_markdown_table(lines, index)
+            if table_rows:
+                row_size = len(table_rows)
+                column_size = max(len(row) for row in table_rows)
+                blocks.append(
+                    Block.builder()
+                    .block_type(19)
+                    .table(
+                        Table.builder()
+                        .property(
+                            TableProperty.builder()
+                            .row_size(row_size)
+                            .column_size(column_size)
+                            .build()
+                        )
+                        .build()
+                    )
+                    .build()
+                )
+                table_text = "\n".join(" | ".join(row) for row in table_rows)
+                blocks.append(self._build_text_block(2, table_text, "text"))
+                index = next_index
+                continue
 
             # 识别标题
-            if line.startswith('# '):
-                block_type = 3  # H1
-                text_content = line[2:]
-            elif line.startswith('## '):
-                block_type = 4  # H2
-                text_content = line[3:]
-            elif line.startswith('### '):
-                block_type = 5  # H3
-                text_content = line[4:]
-            elif line.startswith('---'):
+            heading = re.match(r"^(#{1,6})\s+(.+)$", line)
+            if heading:
+                level = len(heading.group(1))
+                block_type = 2 + level
+                blocks.append(
+                    self._build_text_block(
+                        block_type,
+                        self._clean_inline_markdown(heading.group(2)),
+                        f"heading{level}",
+                    )
+                )
+            elif self._is_divider(line):
                 # 分割线
                 blocks.append(Block.builder()
                               .block_type(22)
                               .divider(Divider.builder().build())
                               .build())
-                continue
+            elif line.startswith(">"):
+                quote_text = re.sub(r"^>\s?", "", line).strip()
+                blocks.append(
+                    self._build_text_block(
+                        15,
+                        self._clean_inline_markdown(quote_text),
+                        "quote",
+                    )
+                )
+            else:
+                unordered = re.match(r"^\s*[-*+]\s+(.+)$", line)
+                ordered = re.match(r"^\s*\d+[.)]\s+(.+)$", line)
+                if unordered:
+                    blocks.append(
+                        self._build_text_block(
+                            12,
+                            self._clean_inline_markdown(unordered.group(1)),
+                            "bullet",
+                        )
+                    )
+                elif ordered:
+                    blocks.append(
+                        self._build_text_block(
+                            13,
+                            self._clean_inline_markdown(ordered.group(1)),
+                            "ordered",
+                        )
+                    )
+                else:
+                    blocks.append(
+                        self._build_text_block(
+                            2,
+                            self._clean_inline_markdown(line),
+                            "text",
+                        )
+                    )
 
-            # 构造 Text 类型的 Block
-            # SDK 的结构嵌套比较深: Block -> Text -> elements -> TextElement -> TextRun -> content
-            text_run = TextRun.builder() \
-                .content(text_content) \
-                .text_element_style(TextElementStyle.builder().build()) \
-                .build()
-
-            text_element = TextElement.builder() \
-                .text_run(text_run) \
-                .build()
-
-            text_obj = Text.builder() \
-                .elements([text_element]) \
-                .style(TextStyle.builder().build()) \
-                .build()
-
-            # 根据 block_type 放入正确的属性容器
-            block_builder = Block.builder().block_type(block_type)
-
-            if block_type == 2:
-                block_builder.text(text_obj)
-            elif block_type == 3:
-                block_builder.heading1(text_obj)
-            elif block_type == 4:
-                block_builder.heading2(text_obj)
-            elif block_type == 5:
-                block_builder.heading3(text_obj)
-
-            blocks.append(block_builder.build())
+            index += 1
 
         return blocks
+
+    def _build_text_block(self, block_type: int, content: str, attr_name: str) -> Block:
+        """Build a text-like Feishu block."""
+        text_run = TextRun.builder() \
+            .content(content) \
+            .text_element_style(TextElementStyle.builder().build()) \
+            .build()
+
+        text_element = TextElement.builder() \
+            .text_run(text_run) \
+            .build()
+
+        text_obj = Text.builder() \
+            .elements([text_element]) \
+            .style(TextStyle.builder().build()) \
+            .build()
+
+        block_builder = Block.builder().block_type(block_type)
+        getattr(block_builder, attr_name)(text_obj)
+        return block_builder.build()
+
+    def _consume_markdown_table(self, lines: List[str], start_index: int) -> Tuple[List[List[str]], int]:
+        """Consume a basic Markdown pipe table from start_index."""
+        if start_index + 1 >= len(lines):
+            return [], start_index
+
+        header = lines[start_index].strip()
+        separator = lines[start_index + 1].strip()
+        if not self._looks_like_table_row(header) or not self._is_table_separator(separator):
+            return [], start_index
+
+        rows = [self._split_table_row(header)]
+        index = start_index + 2
+        while index < len(lines):
+            row = lines[index].strip()
+            if not self._looks_like_table_row(row):
+                break
+            rows.append(self._split_table_row(row))
+            index += 1
+
+        return rows, index
+
+    def _looks_like_table_row(self, line: str) -> bool:
+        return "|" in line and len(self._split_table_row(line)) >= 2
+
+    def _is_table_separator(self, line: str) -> bool:
+        if not self._looks_like_table_row(line):
+            return False
+        cells = self._split_table_row(line)
+        return all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+    def _split_table_row(self, line: str) -> List[str]:
+        trimmed = line.strip().strip("|")
+        return [self._clean_inline_markdown(cell.strip()) for cell in trimmed.split("|")]
+
+    def _is_divider(self, line: str) -> bool:
+        return bool(re.fullmatch(r"[-*_]\s*[-*_\s]{2,}", line))
+
+    def _clean_inline_markdown(self, text: str) -> str:
+        """Remove common inline Markdown markers for doc blocks."""
+        cleaned = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", text)
+        cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+        cleaned = re.sub(r"(\*\*|__)(.*?)\1", r"\2", cleaned)
+        cleaned = re.sub(r"(`+)(.*?)\1", r"\2", cleaned)
+        cleaned = cleaned.replace("**", "").replace("__", "")
+        cleaned = cleaned.replace("*", "").replace("_", "")
+        return cleaned.strip()

@@ -89,6 +89,50 @@
 
 默认 workflow 仍不映射 `MARKDOWN_TO_IMAGE_CHANNELS` 与 `MERGE_EMAIL_NOTIFICATION`。它们是发送形态或聚合行为开关，不是渠道凭证；在 Actions 中自动开始读取同名 Secret/Variable 会引入额外行为变化。
 
+## 报告投递体验 2.0
+
+完整股票研报不再建议强塞进 IM 消息正文。推荐模型是：IM 平台负责提醒、摘要、关键结论和入口链接；Web 历史报告、飞书云文档、HTML 邮件或显式启用的图片快照负责完整阅读。该模型不改变现有默认发送行为，当前 `NotificationService.send(content: str)` 仍保持兼容；新增的 `ReportDeliveryPackage` 是内部契约，用于后续让不同 sender 接收同一份渠道中立输入。
+
+`ReportDeliveryPackage` 的载体字段包括：
+
+| 载体 | 用途 | 默认定位 |
+| --- | --- | --- |
+| `summary_text` | 纯文本摘要 | 所有 IM / Push 渠道的基础 fallback |
+| `summary_card` | 原生摘要卡片 | 飞书、Slack 等支持卡片的平台优先使用 |
+| `summary_markdown` | 摘要 Markdown | 支持 Markdown 子集的平台使用 |
+| `summary_items` | 关键结论列表 | 买入/观望/卖出统计、Top 结论、风险提示 |
+| `full_markdown` | 完整 Markdown | Web Markdown endpoint、邮件或文本 fallback |
+| `full_html` | 完整 HTML | 邮件优先载体 |
+| `image_snapshot` | 图片快照 | 仅显式启用时使用，适合短报告或摘要视觉保真 |
+| `report_url` | Web 历史报告入口 | 只有存在明确可访问 base URL 或历史记录时才生成 |
+| `external_doc_url` | 外部文档入口 | 飞书云文档等外部阅读载体 |
+
+package 的 `metadata` 会过滤疑似敏感键，例如 token、secret、password、webhook、authorization、sendkey、cookie，不应承载 webhook URL、邮箱密码、bot secret 或 API key。
+
+### 渠道能力矩阵
+
+| 渠道 | Markdown 支持 | 大小限制 | 图片 | 文件/附件 | 原生卡片 | 推荐完整报告载体 | 是否适合完整报告 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 企业微信 | markdown/text 子集 | `WECHAT_MAX_BYTES`；text 模式更小 | 支持，需 `MARKDOWN_TO_IMAGE_CHANNELS=wechat` | 不作为默认能力 | 无 | `report_url`，可选摘要图 | 不推荐 |
+| 飞书 | `lark_md` 子集 | `FEISHU_MAX_BYTES`，超长分片 | 当前 Webhook 默认不走图片 | 云文档 | interactive card | `external_doc_url` / `report_url` | 不推荐正文承载 |
+| Telegram | Markdown/HTML 能力取决于发送实现 | 平台单条限制 | 支持，opt-in | 可扩展文件 | 无 | `report_url`，可选图片 | 长报告建议链接 |
+| 邮件 | HTML / Markdown | 邮箱服务限制 | 支持内联图 | 支持附件扩展 | 无 | `full_html` / `full_markdown` | 适合 |
+| Slack | `mrkdwn` 子集 | 平台消息限制 | Bot 支持，Webhook 回退文本 | Bot 可上传 | Block Kit 能力 | `report_url`，可选图片 | 摘要和链接优先 |
+| Discord | Markdown 子集 | 平台消息限制 | 当前默认文本 | 不作为默认能力 | 不作为默认能力 | `report_url` | 不推荐 |
+| PushPlus | 基础文本/Markdown | 服务端限制 | 不作为默认能力 | 不作为默认能力 | 无 | `report_url` | 不推荐 |
+| Server酱 | 基础文本/Markdown | 服务端限制 | 不作为默认能力 | 不作为默认能力 | 无 | `report_url` | 不推荐 |
+| ntfy | 通知文本为主 | 适合短提醒 | 不作为默认能力 | 不作为默认能力 | 无 | `report_url` | 不推荐 |
+| Gotify | Markdown 文本 | 适合短提醒 | 不作为默认能力 | 不作为默认能力 | 无 | `report_url` | 不推荐 |
+| Custom Webhook | 取决于目标服务和模板 | 取决于目标服务 | 可通过现有转图链路 opt-in | 取决于目标服务 | 取决于目标服务 | summary + link payload | 默认不推荐 |
+
+关键边界：
+
+- 飞书与企业微信默认定位为摘要、关键结论、风险提示和完整报告入口，不推荐承载完整研报正文。
+- `MARKDOWN_TO_IMAGE_CHANNELS` 继续是显式 opt-in，不会自动把完整长报告改成图片。企业微信图片模式适合摘要模板或短报告；图片超限会回退 Markdown 文本。
+- `FEISHU_MAX_BYTES`、`WECHAT_MAX_BYTES`、`WECHAT_MSG_TYPE` 继续兼容现有分片和消息类型逻辑。
+- `FEISHU_FOLDER_TOKEN` 只参与飞书云文档创建；`FEISHU_WEBHOOK_URL` 才负责把摘要消息发到群。
+- 单一渠道的渲染失败、云文档失败或转图失败，应回退到现有文本 / 分片路径，不影响其他渠道和主分析流程。
+
 ## CLI 诊断
 
 ```bash
@@ -99,6 +143,7 @@ python main.py --check-notify
 
 - 返回码 `0`：没有 error 级诊断。
 - 返回码 `1`：存在 error，例如 0 个静态通知渠道已配置，或成对 key 只配置了一半。
+- 诊断输出会提示已启用渠道的推荐投递形态，例如摘要、链接、图片、文档或分片文本，并在图片转图依赖缺失时给出 warning。
 
 ## Web 一键测试
 

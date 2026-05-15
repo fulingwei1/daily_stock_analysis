@@ -743,6 +743,20 @@ GOTIFY_TOKEN=app-token
 the two services expose different APIs: ntfy topics are part of the endpoint,
 while Gotify uses `/message` as a fixed server API.
 
+### Report Delivery Experience and Channel Selection
+
+Use Web report history, Feishu Cloud Docs, or HTML email for full report reading. IM / push channels such as Feishu, WeCom, Telegram, Slack, Discord, PushPlus, ServerChan, ntfy, Gotify, and Custom Webhook should primarily carry a summary, key decisions, risk notes, and a full-report entry link.
+
+Recommended combinations:
+
+- Feishu: summary card plus Feishu Cloud Doc or Web link. `FEISHU_WEBHOOK_URL` sends group messages; `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_FOLDER_TOKEN` create cloud documents.
+- WeCom: compact dashboard plus Web link. Images are sent only when `MARKDOWN_TO_IMAGE_CHANNELS=wechat` is explicitly configured, and are best suited for summary snapshots.
+- Email: keep full HTML / Markdown as a high-quality full-report carrier.
+- Telegram / Slack: summary plus link by default; image delivery remains opt-in through `MARKDOWN_TO_IMAGE_CHANNELS`.
+- Discord / PushPlus / ServerChan / ntfy / Gotify / Custom Webhook: summary plus link first, avoiding long report bodies in chat feeds.
+
+If no reachable Web base URL or history record is available, DSA should not generate a misleading full-report link. If Feishu document creation or image rendering fails, delivery falls back to the existing text / chunked message path. Run `python main.py --check-notify` to see the recommended delivery shape and image-rendering dependency diagnostics for configured channels.
+
 ### Discord
 
 Discord supports two push methods:
