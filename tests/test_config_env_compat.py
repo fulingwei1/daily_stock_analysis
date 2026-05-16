@@ -7,6 +7,7 @@ import socket
 import tempfile
 import unittest
 import urllib.error
+import urllib.request
 from urllib.parse import urlparse
 from pathlib import Path
 from unittest.mock import patch
@@ -592,6 +593,50 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519"])
         handler_types = [getattr(h, "proxies", None) for h in captured_handlers["handlers"]]
         self.assertIn({}, handler_types)
+
+    @patch("src.config.urllib.request.build_opener")
+    def test_stock_list_fetch_api_dns_patch_runs_under_shared_lock(
+        self,
+        mock_build_opener,
+    ) -> None:
+        from src import config as config_module
+
+        class RecordingLock:
+            def __init__(self):
+                self.locked = False
+                self.events = []
+
+            def __enter__(self):
+                self.locked = True
+                self.events.append("enter")
+                return self
+
+            def __exit__(self, *_args):
+                self.events.append("exit")
+                self.locked = False
+                return False
+
+        original_getaddrinfo = config_module.socket.getaddrinfo
+        observations = []
+        recording_lock = RecordingLock()
+
+        class FakeOpener:
+            def open(self, _request, timeout):
+                observations.append((recording_lock.locked, config_module.socket.getaddrinfo is original_getaddrinfo))
+                return _FakeUrlopenResponse('["600519"]')
+
+        mock_build_opener.return_value = FakeOpener()
+
+        with patch("src.config._STOCK_LIST_FETCH_DNS_LOCK", recording_lock):
+            response = config_module._open_stock_list_fetch_request(
+                urllib.request.Request("https://example.com/stocks.json"),
+                timeout_seconds=1.0,
+            )
+
+        self.assertEqual(response.read().decode("utf-8"), '["600519"]')
+        self.assertEqual(recording_lock.events, ["enter", "exit"])
+        self.assertEqual(observations, [(True, False)])
+        self.assertIs(config_module.socket.getaddrinfo, original_getaddrinfo)
 
     @patch("src.config.setup_env")
     @patch("src.config._open_stock_list_fetch_request", side_effect=OSError("offline"))

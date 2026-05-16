@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import socket
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -59,6 +60,7 @@ _STOCK_LIST_FETCH_BLOCKED_IPS = frozenset(
 )
 _STOCK_LIST_FETCH_MAX_REDIRECTS = 5
 _STOCK_LIST_FETCH_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_STOCK_LIST_FETCH_DNS_LOCK = threading.Lock()
 
 
 class _StockListNoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -369,7 +371,6 @@ def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
         urllib.request.ProxyHandler({}),
     )
     current_request = request
-    original_getaddrinfo = socket.getaddrinfo
 
     for redirect_count in range(_STOCK_LIST_FETCH_MAX_REDIRECTS + 1):
         parsed = urlparse(current_request.full_url)
@@ -382,65 +383,68 @@ def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
         if request_port is None:
             request_port = 443 if (parsed.scheme or "").lower() == "https" else 80
 
-        def _getaddrinfo(hostname, port, family=0, type=0, proto=0, flags=0):
-            normalized_hostname = (hostname or "").strip().lower().rstrip(".")
-            if normalized_hostname == request_host:
-                resolved_port = int(port if port is not None else request_port)
-                entries = []
-                for resolved_host in resolved_hosts:
-                    resolved_address = ipaddress.ip_address(resolved_host)
-                    if resolved_address.version == 4:
-                        entries.append(
-                            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (resolved_host, resolved_port))
-                        )
-                    else:
-                        entries.append(
-                            (
-                                socket.AF_INET6,
-                                socket.SOCK_STREAM,
-                                socket.IPPROTO_TCP,
-                                "",
-                                (resolved_host, resolved_port, 0, 0),
+        with _STOCK_LIST_FETCH_DNS_LOCK:
+            original_getaddrinfo = socket.getaddrinfo
+
+            def _getaddrinfo(hostname, port, family=0, type=0, proto=0, flags=0):
+                normalized_hostname = (hostname or "").strip().lower().rstrip(".")
+                if normalized_hostname == request_host:
+                    resolved_port = int(port if port is not None else request_port)
+                    entries = []
+                    for resolved_host in resolved_hosts:
+                        resolved_address = ipaddress.ip_address(resolved_host)
+                        if resolved_address.version == 4:
+                            entries.append(
+                                (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (resolved_host, resolved_port))
                             )
-                        )
+                        else:
+                            entries.append(
+                                (
+                                    socket.AF_INET6,
+                                    socket.SOCK_STREAM,
+                                    socket.IPPROTO_TCP,
+                                    "",
+                                    (resolved_host, resolved_port, 0, 0),
+                                )
+                            )
 
-                if family:
-                    entries = [entry for entry in entries if entry[0] == family]
-                if type:
-                    entries = [entry for entry in entries if entry[1] == type]
-                if proto:
-                    entries = [entry for entry in entries if entry[2] == proto]
-                if not entries:
-                    raise socket.gaierror("STOCK_LIST_FETCH_API 无可用解析地址")
-                return entries
+                    if family:
+                        entries = [entry for entry in entries if entry[0] == family]
+                    if type:
+                        entries = [entry for entry in entries if entry[1] == type]
+                    if proto:
+                        entries = [entry for entry in entries if entry[2] == proto]
+                    if not entries:
+                        raise socket.gaierror("STOCK_LIST_FETCH_API 无可用解析地址")
+                    return entries
 
-            return original_getaddrinfo(hostname, port, family=family, type=type, proto=proto, flags=flags)
+                return original_getaddrinfo(hostname, port, family=family, type=type, proto=proto, flags=flags)
 
-        socket.getaddrinfo = _getaddrinfo
-        try:
-            response = opener.open(current_request, timeout=timeout_seconds)
-            return response
-        except urllib.error.HTTPError as exc:
-            if exc.code not in _STOCK_LIST_FETCH_REDIRECT_STATUS_CODES:
-                raise
-            if redirect_count >= _STOCK_LIST_FETCH_MAX_REDIRECTS:
-                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多") from exc
+            socket.getaddrinfo = _getaddrinfo
+            try:
+                response = opener.open(current_request, timeout=timeout_seconds)
+                return response
+            except urllib.error.HTTPError as exc:
+                if exc.code not in _STOCK_LIST_FETCH_REDIRECT_STATUS_CODES:
+                    raise
+                if redirect_count >= _STOCK_LIST_FETCH_MAX_REDIRECTS:
+                    raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多") from exc
 
-            location = exc.headers.get("Location") if exc.headers else None
-            if not location:
-                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向缺少 Location") from exc
+                location = exc.headers.get("Location") if exc.headers else None
+                if not location:
+                    raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向缺少 Location") from exc
 
-            next_url = urljoin(current_request.full_url, location)
-            if not _is_valid_stock_list_fetch_target(next_url):
-                raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向到受限地址") from exc
+                next_url = urljoin(current_request.full_url, location)
+                if not _is_valid_stock_list_fetch_target(next_url):
+                    raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向到受限地址") from exc
 
-            current_request = urllib.request.Request(
-                next_url,
-                headers=dict(current_request.header_items()),
-                method="GET",
-            )
-        finally:
-            socket.getaddrinfo = original_getaddrinfo
+                current_request = urllib.request.Request(
+                    next_url,
+                    headers=dict(current_request.header_items()),
+                    method="GET",
+                )
+            finally:
+                socket.getaddrinfo = original_getaddrinfo
 
     raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多")
 
