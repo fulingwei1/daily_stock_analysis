@@ -190,6 +190,12 @@ class TestStockListFetchApiFieldRegistered(unittest.TestCase):
 
         self.assertIsNotNone(re.match(pattern, "HTTPS://example.com/stocks.json"))
 
+    def test_fetch_api_is_sensitive_and_password_control(self):
+        field = get_field_definition("STOCK_LIST_FETCH_API")
+
+        self.assertTrue(field["is_sensitive"])
+        self.assertEqual(field["ui_control"], "password")
+
 
 class TestSensitiveFieldsUsePasswordControl(unittest.TestCase):
     """Every is_sensitive field must use ui_control='password' to avoid
