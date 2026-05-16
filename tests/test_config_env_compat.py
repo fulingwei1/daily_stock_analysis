@@ -550,6 +550,50 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         self.assertEqual(config.stock_list, ["600519"])
 
     @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.build_opener")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_ignores_environment_proxy_settings(
+        self,
+        _mock_parse_yaml,
+        mock_build_opener,
+        _mock_setup_env,
+    ) -> None:
+        opener_calls = []
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                opener_calls.append(request.full_url)
+                return _FakeUrlopenResponse('["600519"]')
+
+        captured_handlers = {}
+
+        def fake_build_opener(*handlers):
+            captured_handlers["handlers"] = handlers
+            return FakeOpener()
+
+        mock_build_opener.side_effect = fake_build_opener
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.json",
+                "HTTP_PROXY": "http://127.0.0.1:8080",
+                "HTTPS_PROXY": "http://127.0.0.1:8080",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertIn(
+            "https://example.com/stocks.json",
+            opener_calls,
+        )
+        self.assertEqual(config.stock_list, ["600519"])
+        handler_types = [getattr(h, "proxies", None) for h in captured_handlers["handlers"]]
+        self.assertIn({}, handler_types)
+
+    @patch("src.config.setup_env")
     @patch("src.config._open_stock_list_fetch_request", side_effect=OSError("offline"))
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_failure_falls_back_to_local_stock_list(

@@ -362,7 +362,12 @@ def _is_valid_stock_list_fetch_target(value: str) -> bool:
 
 def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
     """Open a stock-list request, validating every redirect before following it."""
-    opener = urllib.request.build_opener(_StockListNoRedirectHandler)
+    # Disable environment proxies for this fetch path to ensure URL/path validation
+    # applies to the real target and cannot be bypassed by HTTP_PROXY / HTTPS_PROXY.
+    opener = urllib.request.build_opener(
+        _StockListNoRedirectHandler,
+        urllib.request.ProxyHandler({}),
+    )
     current_request = request
     original_getaddrinfo = socket.getaddrinfo
 
