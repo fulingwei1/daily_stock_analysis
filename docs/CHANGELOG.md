@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [改进] 告警中心 P2 新增后台评估 worker，schedule 模式可同时评估持久化 active rules 与 legacy JSON 规则，并记录 `triggered` / `skipped` / `degraded` / `failed` 最小评估历史。
 - [修复] 统一 Windows 桌面安装包与自动更新元数据文件名，避免 Release 中出现重复安装包并阻断 `latest.yml` 指向不存在附件。
 - [修复] 桌面端启动 WebUI 时为入口页增加 no-cache 响应头和版本化 cache-busting URL，避免安装新版后 Electron 继续复用旧 WebUI 缓存。
+- [新功能] 新增 `STOCK_LIST_FETCH_API`，支持从 HTTP(S) 获取远程股票列表，并在失败或为空时回退到 `STOCK_LIST`。
+- [修复] `STOCK_LIST_FETCH_API` 在重定向前校验目标地址，阻断 loopback、link-local 与云元数据地址，同时保留可访问的内网目标。
 
 ## [3.17.1] - 2026-05-16
 
@@ -96,8 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [文档] 明确 `MARKET_REVIEW_COLOR_SCHEME` 仅为大盘复盘展示配置，枚举为 `green_up`/`red_up`（默认 `green_up`），属于文案与颜色语义层面变更；本次未调整模型名、provider、Base URL、LLM 运行时迁移或运行时清理逻辑。
 - [新功能] 新增 Alert API MVP，支持告警规则 CRUD、启停、一次性测试以及触发/通知结果查询接口，首版覆盖 `price_cross` / `price_change_percent` / `volume_spike`，并保持 legacy 配置兼容和响应脱敏。
 - [修复] 大盘复盘执行结果写入现有分析历史，Web 历史列表可直接查看已生成复盘，避免重复触发分析。
-- [新功能] 自选股配置新增可选 `STOCK_LIST_FETCH_API`，支持从 HTTP(S) 拉取远程股票列表，并在失败或空响应时回退 `STOCK_LIST`。
-- [修复] `STOCK_LIST_FETCH_API` 跟随重定向前校验目标地址，阻断 loopback、link-local 与云 metadata 目标，同时保留运行环境可访问的内网地址支持。
 
 ## [3.16.0] - 2026-05-10
 
