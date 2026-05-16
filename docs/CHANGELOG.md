@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - [修复] 统一 Windows 桌面安装包与自动更新元数据文件名，避免 Release 中出现重复安装包并阻断 `latest.yml` 指向不存在附件。
 - [修复] 桌面端启动 WebUI 时为入口页增加 no-cache 响应头和版本化 cache-busting URL，避免安装新版后 Electron 继续复用旧 WebUI 缓存。
+- [文档] 通知分阶段治理文档已收口为 `#1311` 议题分片范围，阶段性 PR 需使用 `Refs #1311` 追踪，不得用 `Closes`/`Fixes`/`Resolves` 自动关闭 umbrella。
+- [文档] 补齐 `docs/notifications.md` 与 `docs/full-guide*.md` 中的通知能力基线、渠道能力矩阵和 PR 描述交付清单（含 `./scripts/ci_gate.sh`、`python main.py --check-notify`、`tests/test_notification_diagnostics.py` 与 `tests/test_feishu_doc.py`）。
+- [文档] 明确报告投递体验边界：IM/Push 渠道以摘要+入口为主、完整研报优先 `report_url` / `external_doc_url` / HTML，避免敏感链接和完整正文误入默认通道。
 
 ## [3.17.1] - 2026-05-16
 
@@ -59,7 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新功能] 通知网关新增 Gotify 一等渠道，支持通过 `GOTIFY_URL` / `GOTIFY_TOKEN` 推送 Markdown 文本并接入 Web 测试、路由、Actions 与诊断。
 - [修复] 收紧 ntfy 结构化校验，避免 URL 编码空白 topic 被误判为有效通知端点。
 - [文档] 补充 Bark custom webhook 示例和 WebPush / Apprise 通知渠道评估，明确本轮不新增运行时依赖或配置入口。
-- [文档] 收口通知专题场景文档，并为 GitHub Actions 通知 env 对照表加入自动化校验。
 - [新功能] 新增 `ReportDeliveryPackage` 内部投递契约和渠道能力矩阵，作为后续“IM 摘要 + 完整报告入口”通知体验的统一输入。
 - [改进] 通知诊断输出已配置渠道的推荐投递形态，并在 Markdown 转图片依赖缺失或飞书云文档缺少群 Webhook 时给出提示。
 - [改进] 飞书云文档 Markdown block 转换补充列表、引用、分割线和基础表格识别，保留现有创建失败回退路径。
@@ -71,9 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [修复] 调度模式未显式设置 `SCHEDULE_RUN_IMMEDIATELY` 时，会继续继承 `RUN_IMMEDIATELY` 的运行时覆盖语义，避免被持久化 `.env` 别名反向覆盖。
 - [文档] 补充 Longbridge 冷却开关与调度启动兼容语义说明。
 - [文档] 明确本轮仅新增市场复盘底层数据源能力（概念排行、人气股、涨停池），未修改模型名、provider、Base URL、LLM 运行时入口或 `.env` 兼容语义；回退路径为回滚本次变更版本，不需要执行配置迁移。
-- [文档] 明确 #1311 的 umbrella 分拆节奏：每个阶段性 PR 采用 `Refs #1311` 串联，不以单次 PR 关闭 issue；当前变更仅扩展通知投递体验/诊断文档，未改模型名、provider、Base URL、LLM 运行时入口与 `.env` 配置迁移语义；兼容性证据与回退路径已同步写入 `docs/notifications.md`、`docs/full-guide*.md`（含 `tests/test_notification_diagnostics.py`、`tests/test_feishu_doc.py`）。
-- [文档] 本分阶段治理 PR 明确要求在说明中补充 `./scripts/ci_gate.sh` 与 `python main.py --check-notify`（必要时加 `python -m pytest -m "not network"`）的执行结果，并使用 `Refs #1311` 做 issue 串联，避免误关闭 umbrella。
-- [文档] 收紧 `#1311` 分阶段 PR 描述口径：必须用 `Refs #1311` 关联 umbrella，逐项说明结构化模型/API 或迁移风险为既有静态检测覆盖新增通知配置项，并记录 `./scripts/ci_gate.sh`、`python main.py --check-notify` 等实际验证结果。
 - [新功能] Windows 桌面安装版接入 electron-updater，发现新版本后可后台下载并在用户确认后重启安装；Release 工作流同步上传自动更新所需元数据。
 - [测试] 完善桌面端更新链路验收说明：补充 `apps/dsa-desktop` 与打包产物元数据的本地验证步骤（Web 构建、桌面测试/构建、`latest.yml` 与 `*.blockmap` 检查），并明确 Windows/NSIS 部分需在 Windows 发布链路复核。
 - [测试] 补充 `docs/desktop-package.md` 对 Windows NSIS 与 `desktop-release` 链路的发布级复核要求：注明 Linux 环境不能直接产出 Windows 安装器，要求在 Windows 环境补齐 `latest.yml`/`*.blockmap` 与 installer 的版本一致性与附件核对。
