@@ -11,6 +11,7 @@ A股自选股智能分析系统 - 配置管理模块
 """
 
 import ipaddress
+import http.client
 import json
 import logging
 import os
@@ -482,7 +483,7 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
             logger.warning("STOCK_LIST_FETCH_API 响应超过 1MB，已忽略")
             return []
         return _parse_stock_list_payload(payload.decode(charset, errors="replace"))
-    except (OSError, urllib.error.URLError, UnicodeDecodeError, LookupError) as exc:
+    except (OSError, urllib.error.URLError, UnicodeDecodeError, LookupError, http.client.IncompleteRead) as exc:
         logger.warning("STOCK_LIST_FETCH_API 拉取失败，回退本地 STOCK_LIST: %s", exc)
         return []
 

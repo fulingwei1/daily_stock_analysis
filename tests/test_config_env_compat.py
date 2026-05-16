@@ -2,6 +2,7 @@
 """Tests for backward-compatible config env aliases and TickFlow loading."""
 
 import os
+from http.client import IncompleteRead
 import socket
 import tempfile
 import unittest
@@ -557,6 +558,36 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
         _mock_urlopen,
         _mock_setup_env,
     ) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://example.com/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config._open_stock_list_fetch_request")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_incomplete_read_falls_back_to_local_stock_list(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        mock_response = _FakeUrlopenResponse("600519")
+
+        def fake_read(_size: int = -1) -> bytes:
+            raise IncompleteRead(partial=mock_response._payload, expected=1024)
+
+        mock_response.read = fake_read
+
+        mock_urlopen.return_value = mock_response
+
         with patch.dict(
             os.environ,
             {
