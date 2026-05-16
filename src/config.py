@@ -347,6 +347,24 @@ def _is_http_stock_list_fetch_url(parsed) -> bool:
     return scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def _has_valid_stock_list_fetch_port(parsed) -> bool:
+    try:
+        parsed.port
+    except ValueError:
+        return False
+    return True
+
+
+def _get_stock_list_fetch_request_port(parsed) -> int:
+    try:
+        request_port = parsed.port
+    except ValueError as exc:
+        raise urllib.error.URLError("STOCK_LIST_FETCH_API 端口无效") from exc
+    if request_port is None:
+        request_port = 443 if (parsed.scheme or "").lower() == "https" else 80
+    return request_port
+
+
 def _is_safe_stock_list_fetch_url(parsed) -> bool:
     """Block known metadata endpoints before fetching remote watchlists."""
     if not (parsed.hostname or "").strip():
@@ -359,7 +377,11 @@ def _is_valid_stock_list_fetch_target(value: str) -> bool:
         parsed = urlparse(value)
     except ValueError:
         return False
-    return _is_http_stock_list_fetch_url(parsed) and _is_safe_stock_list_fetch_url(parsed)
+    return (
+        _is_http_stock_list_fetch_url(parsed)
+        and _has_valid_stock_list_fetch_port(parsed)
+        and _is_safe_stock_list_fetch_url(parsed)
+    )
 
 
 def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
@@ -379,9 +401,7 @@ def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
             raise urllib.error.URLError("STOCK_LIST_FETCH_API 指向受限的元数据地址，已阻断")
 
         request_host = (parsed.hostname or "").strip().lower().rstrip(".")
-        request_port = parsed.port
-        if request_port is None:
-            request_port = 443 if (parsed.scheme or "").lower() == "https" else 80
+        request_port = _get_stock_list_fetch_request_port(parsed)
 
         with _STOCK_LIST_FETCH_DNS_LOCK:
             original_getaddrinfo = socket.getaddrinfo
@@ -461,6 +481,9 @@ def _fetch_stock_list_from_api(url: Optional[str], *, timeout_seconds: float = 5
         logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
         return []
     if not _is_http_stock_list_fetch_url(parsed):
+        logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
+        return []
+    if not _has_valid_stock_list_fetch_port(parsed):
         logger.warning("STOCK_LIST_FETCH_API 不是有效的 HTTP(S) URL，已忽略")
         return []
     if not _is_safe_stock_list_fetch_url(parsed):

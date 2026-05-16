@@ -714,6 +714,34 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
     @patch("src.config.setup_env")
     @patch("src.config._open_stock_list_fetch_request")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_malformed_port_falls_back_to_local_stock_list(
+        self,
+        _mock_parse_yaml,
+        mock_urlopen,
+        _mock_setup_env,
+    ) -> None:
+        for fetch_api in (
+            "https://example.com:abc/watchlist",
+            "https://example.com:99999/watchlist",
+        ):
+            with self.subTest(fetch_api=fetch_api):
+                mock_urlopen.reset_mock()
+                with patch.dict(
+                    os.environ,
+                    {
+                        "STOCK_LIST": "000001,300750",
+                        "STOCK_LIST_FETCH_API": fetch_api,
+                    },
+                    clear=True,
+                ):
+                    config = Config._load_from_env()
+
+                mock_urlopen.assert_not_called()
+                self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config._open_stock_list_fetch_request")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_stock_list_fetch_api_invalid_charset_falls_back_to_local_stock_list(
         self,
         _mock_parse_yaml,
