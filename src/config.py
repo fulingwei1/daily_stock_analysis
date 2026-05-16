@@ -299,31 +299,28 @@ def _is_blocked_stock_list_fetch_ip(ip_address: Any) -> bool:
     )
 
 
-def _is_http_stock_list_fetch_url(parsed) -> bool:
-    scheme = (parsed.scheme or "").lower()
-    return scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _is_safe_stock_list_fetch_url(parsed) -> bool:
-    """Block known metadata endpoints before fetching remote watchlists."""
+def _resolve_stock_list_fetch_hosts(parsed) -> Tuple[str, ...]:
+    """Resolve hostnames into validated target IP addresses."""
     host = (parsed.hostname or "").strip().lower().rstrip(".")
     if not host:
-        return True
+        return ()
 
     if host in _STOCK_LIST_FETCH_BLOCKED_HOSTS:
-        return False
+        return ()
 
     try:
-        return not _is_blocked_stock_list_fetch_ip(ipaddress.ip_address(host))
+        address = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        address = None
+    if address is not None:
+        return () if _is_blocked_stock_list_fetch_ip(address) else (str(address),)
 
     try:
         resolved = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     except OSError:
-        return False
+        return ()
 
-    resolved_hosts = set()
+    resolved_hosts: List[str] = []
     for item in resolved:
         sockaddr = item[4]
         if not sockaddr:
@@ -331,15 +328,27 @@ def _is_safe_stock_list_fetch_url(parsed) -> bool:
         resolved_host = str(sockaddr[0]).split("%", 1)[0]
         if resolved_host in resolved_hosts:
             continue
-        resolved_hosts.add(resolved_host)
         try:
-            address = ipaddress.ip_address(resolved_host)
+            resolved_address = ipaddress.ip_address(resolved_host)
         except ValueError:
-            return False
-        if _is_blocked_stock_list_fetch_ip(address):
-            return False
+            return ()
+        if _is_blocked_stock_list_fetch_ip(resolved_address):
+            return ()
+        resolved_hosts.append(resolved_host)
 
-    return bool(resolved_hosts)
+    return tuple(resolved_hosts)
+
+
+def _is_http_stock_list_fetch_url(parsed) -> bool:
+    scheme = (parsed.scheme or "").lower()
+    return scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _is_safe_stock_list_fetch_url(parsed) -> bool:
+    """Block known metadata endpoints before fetching remote watchlists."""
+    if not (parsed.hostname or "").strip():
+        return True
+    return bool(_resolve_stock_list_fetch_hosts(parsed))
 
 
 def _is_valid_stock_list_fetch_target(value: str) -> bool:
@@ -354,10 +363,57 @@ def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
     """Open a stock-list request, validating every redirect before following it."""
     opener = urllib.request.build_opener(_StockListNoRedirectHandler)
     current_request = request
+    original_getaddrinfo = socket.getaddrinfo
 
     for redirect_count in range(_STOCK_LIST_FETCH_MAX_REDIRECTS + 1):
+        parsed = urlparse(current_request.full_url)
+        resolved_hosts = _resolve_stock_list_fetch_hosts(parsed)
+        if not resolved_hosts:
+            raise urllib.error.URLError("STOCK_LIST_FETCH_API 指向受限的元数据地址，已阻断")
+
+        request_host = (parsed.hostname or "").strip().lower().rstrip(".")
+        request_port = parsed.port
+        if request_port is None:
+            request_port = 443 if (parsed.scheme or "").lower() == "https" else 80
+
+        def _getaddrinfo(hostname, port, family=0, type=0, proto=0, flags=0):
+            normalized_hostname = (hostname or "").strip().lower().rstrip(".")
+            if normalized_hostname == request_host:
+                resolved_port = int(port if port is not None else request_port)
+                entries = []
+                for resolved_host in resolved_hosts:
+                    resolved_address = ipaddress.ip_address(resolved_host)
+                    if resolved_address.version == 4:
+                        entries.append(
+                            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (resolved_host, resolved_port))
+                        )
+                    else:
+                        entries.append(
+                            (
+                                socket.AF_INET6,
+                                socket.SOCK_STREAM,
+                                socket.IPPROTO_TCP,
+                                "",
+                                (resolved_host, resolved_port, 0, 0),
+                            )
+                        )
+
+                if family:
+                    entries = [entry for entry in entries if entry[0] == family]
+                if type:
+                    entries = [entry for entry in entries if entry[1] == type]
+                if proto:
+                    entries = [entry for entry in entries if entry[2] == proto]
+                if not entries:
+                    raise socket.gaierror("STOCK_LIST_FETCH_API 无可用解析地址")
+                return entries
+
+            return original_getaddrinfo(hostname, port, family=family, type=type, proto=proto, flags=flags)
+
+        socket.getaddrinfo = _getaddrinfo
         try:
-            return opener.open(current_request, timeout=timeout_seconds)
+            response = opener.open(current_request, timeout=timeout_seconds)
+            return response
         except urllib.error.HTTPError as exc:
             if exc.code not in _STOCK_LIST_FETCH_REDIRECT_STATUS_CODES:
                 raise
@@ -377,6 +433,8 @@ def _open_stock_list_fetch_request(request, *, timeout_seconds: float):
                 headers=dict(current_request.header_items()),
                 method="GET",
             )
+        finally:
+            socket.getaddrinfo = original_getaddrinfo
 
     raise urllib.error.URLError("STOCK_LIST_FETCH_API 重定向次数过多")
 

@@ -6,6 +6,7 @@ import socket
 import tempfile
 import unittest
 import urllib.error
+from urllib.parse import urlparse
 from pathlib import Path
 from unittest.mock import patch
 
@@ -851,6 +852,66 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
 
         self.assertEqual(requested_urls, ["https://example.com/stocks.json"])
         self.assertEqual(config.stock_list, ["000001", "300750"])
+
+    @patch("src.config.setup_env")
+    @patch("src.config.urllib.request.build_opener")
+    @patch("src.config.socket.getaddrinfo")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_stock_list_fetch_api_blocks_dns_rebind_to_metadata_between_validation_and_request(
+        self,
+        _mock_parse_yaml,
+        mock_getaddrinfo,
+        mock_build_opener,
+        _mock_setup_env,
+    ) -> None:
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            normalized_host = (host or "").strip().lower().rstrip(".")
+            if normalized_host == "watchlist.example":
+                if port is None:
+                    # 预检时允许解析到公网 IP；请求阶段会模拟被 DNS 重绑到元数据地址。
+                    resolved_port = 443
+                    return [
+                        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", resolved_port))
+                    ]
+                return [
+                    (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("169.254.169.254", port)),
+                ]
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443 if port is None else port)),
+            ]
+
+        mock_getaddrinfo.side_effect = fake_getaddrinfo
+
+        requested_urls = []
+
+        class FakeOpener:
+            def open(self, request, timeout):
+                requested_urls.append(request.full_url)
+                parsed = urlparse(request.full_url)
+                request_port = parsed.port if parsed.port is not None else 443
+                resolved = socket.getaddrinfo(parsed.hostname, request_port, type=socket.SOCK_STREAM)
+                for item in resolved:
+                    sockaddr = item[4]
+                    if not sockaddr:
+                        continue
+                    if str(sockaddr[0]).split("%", 1)[0] == "169.254.169.254":
+                        raise OSError("metadata ip reached")
+                return _FakeUrlopenResponse('["600519"]')
+
+        mock_build_opener.return_value = FakeOpener()
+
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "000001,300750",
+                "STOCK_LIST_FETCH_API": "https://watchlist.example/stocks.json",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(requested_urls, ["https://watchlist.example/stocks.json"])
+        self.assertEqual(config.stock_list, ["600519"])
 
     @patch("src.config.setup_env")
     @patch("src.config.urllib.request.build_opener")
