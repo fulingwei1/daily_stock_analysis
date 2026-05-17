@@ -98,7 +98,7 @@ const fieldTitleMap: Record<string, string> = {
 
 const fieldDescriptionMap: Record<string, string> = {
   STOCK_LIST: '使用逗号分隔股票代码，例如：600519,300750。',
-  STOCK_LIST_FETCH_API: '可选 HTTP(S) 地址，用于动态拉取自选股列表；失败或为空时回退到 STOCK_LIST。',
+  STOCK_LIST_FETCH_API: '可选 HTTP(S) 地址，用于动态拉取自选股列表；失败或为空时回退到 STOCK_LIST。启动时进程级环境变量显式设置该键时，优先级高于后续 `.env` 热写值。',
   TUSHARE_TOKEN: '用于接入 Tushare Pro 数据服务的凭据。',
   BOCHA_API_KEYS: '用于新闻检索的 Bocha 密钥，支持逗号分隔多个（最高优先级）。',
   TAVILY_API_KEYS: '用于新闻检索的 Tavily 密钥，支持逗号分隔多个。',

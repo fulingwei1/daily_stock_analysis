@@ -87,7 +87,7 @@ This document compiles common issues encountered by users and their solutions.
    - `GEMINI_MODEL`
    - `REPORT_TYPE`
 
-If you do not want to edit `STOCK_LIST` frequently, set `STOCK_LIST_FETCH_API` to an HTTP(S) endpoint that returns a plain-text or JSON watchlist. When remote fetching fails or returns no valid codes, Actions continues with `STOCK_LIST`. For safety, the request does not reuse `HTTP_PROXY`/`HTTPS_PROXY`, and loopback, link-local, and cloud metadata targets are blocked; self-hosted deployments may use private URLs reachable by the runtime.
+If you do not want to edit `STOCK_LIST` frequently, set `STOCK_LIST_FETCH_API` to an HTTP(S) endpoint that returns a plain-text or JSON watchlist. When remote fetching fails or returns no valid codes, the runtime keeps using `STOCK_LIST` as fallback. For safety, the request does not reuse `HTTP_PROXY`/`HTTPS_PROXY`, and loopback, link-local, and cloud metadata targets are blocked; self-hosted deployments may use private URLs reachable by the runtime.
 
 ---
 
@@ -96,7 +96,7 @@ If you do not want to edit `STOCK_LIST` frequently, set `STOCK_LIST_FETCH_API` t
 **Solution**:
 1. Ensure `.env` file is in project root directory
 2. **Docker deployment / WebUI Settings**:
-   - WebUI saves `STOCK_LIST`, `SCHEDULE_ENABLED`, `SCHEDULE_TIME`, `SCHEDULE_RUN_IMMEDIATELY`, and `RUN_IMMEDIATELY` back into the container's `.env`
+   - WebUI saves `STOCK_LIST`, `STOCK_LIST_FETCH_API`, `SCHEDULE_ENABLED`, `SCHEDULE_TIME`, `SCHEDULE_RUN_IMMEDIATELY`, and `RUN_IMMEDIATELY` back into the container's `.env`
    - Saving from WebUI triggers a config reload for the current process, and runtime reads continue from the latest persisted `.env`; for example, scheduled runs keep hot-reading the saved `STOCK_LIST`
    - If you also pass these keys explicitly as container process env vars (`docker run -e ...` or Compose `environment:`), those explicit process env overrides still win on later restarts; update or remove them if you want the WebUI-saved `.env` values to take over
    - `SCHEDULE_*` and `RUN_IMMEDIATELY` are still **startup-time scheduling settings**: saving them does not immediately trigger an analysis run and does not hot-rebuild the scheduler inside the current process

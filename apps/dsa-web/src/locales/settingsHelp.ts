@@ -46,6 +46,7 @@ const settingsHelpZhCN: SettingsHelpMap = {
       '仅支持 http 和 https 地址。',
       '会阻断 loopback、link-local 和云 metadata 地址；自托管环境可使用运行环境可访问的内网地址。',
       '不要把需要登录态或临时本机端口的地址用于 GitHub Actions。',
+      '若进程启动前通过环境变量显式设置 STOCK_LIST_FETCH_API，当前运行时重载保留该启动级别值，不会被 WebUI 写回 `.env` 覆盖。',
     ],
   },
   'settings.ai_model.LITELLM_MODEL': {
@@ -163,6 +164,7 @@ const settingsHelpEnUS: SettingsHelpMap = {
       'Only http and https URLs are accepted.',
       'Loopback, link-local, and cloud metadata addresses are blocked; self-hosted deployments may use private URLs reachable by the runtime.',
       'Do not use login-only URLs or temporary localhost endpoints for GitHub Actions.',
+      'If STOCK_LIST_FETCH_API is set via process environment before startup, config reload keeps that runtime value and does not let a WebUI `.env` write override it.',
     ],
   },
   'settings.ai_model.LITELLM_MODEL': {

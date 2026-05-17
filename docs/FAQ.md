@@ -89,7 +89,7 @@
    - `GEMINI_MODEL`
    - `REPORT_TYPE`
 
-如果不想频繁修改 `STOCK_LIST`，可以把 `STOCK_LIST_FETCH_API` 设置为一个 HTTP(S) 地址，由外部服务返回纯文本或 JSON 股票列表。远程拉取失败或返回空列表时，Actions 会继续使用 `STOCK_LIST`。出于安全考虑，该请求不复用 `HTTP_PROXY`/`HTTPS_PROXY`，并会阻断 loopback、link-local 和云 metadata 目标；自托管环境可使用运行环境可访问的内网地址。
+如果不想频繁修改 `STOCK_LIST`，可以把 `STOCK_LIST_FETCH_API` 设置为一个 HTTP(S) 地址，由外部服务返回纯文本或 JSON 股票列表。远程拉取失败或返回空列表时，运行时会继续使用 `STOCK_LIST` 作为兜底。出于安全考虑，该请求不复用 `HTTP_PROXY`/`HTTPS_PROXY`，并会阻断 loopback、link-local 和云 metadata 目标；自托管环境可使用运行环境可访问的内网地址。
 
 ---
 
@@ -98,7 +98,7 @@
 **解决方案**：
 1. 确保 `.env` 文件位于项目根目录
 2. **Docker 部署 / WebUI 系统设置**：
-   - WebUI 保存后的 `STOCK_LIST`、`SCHEDULE_ENABLED`、`SCHEDULE_TIME`、`SCHEDULE_RUN_IMMEDIATELY`、`RUN_IMMEDIATELY` 会写回容器内的 `.env`
+   - WebUI 保存后的 `STOCK_LIST`、`STOCK_LIST_FETCH_API`、`SCHEDULE_ENABLED`、`SCHEDULE_TIME`、`SCHEDULE_RUN_IMMEDIATELY`、`RUN_IMMEDIATELY` 会写回容器内的 `.env`
    - WebUI 保存后会触发当前进程的配置重载；运行中的读取路径会同步使用最新写回的 `.env`，例如定时任务会继续热读取保存后的 `STOCK_LIST`
    - 如果容器启动命令里显式传入了这些同名环境变量（如 `docker run -e ...` 或 Compose `environment:`），后续重启时仍以显式进程环境变量为准；要让 WebUI 保存值接管，请同步更新或移除这些显式 override
    - 其中 `SCHEDULE_*` 与 `RUN_IMMEDIATELY` 属于**启动期调度配置**，保存后不会立即触发一次分析，也不会热重建当前进程里的 scheduler
